@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>青天トライ! - Blue Sky Try!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #111; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Loading screen */
+  #loading { position: fixed; inset: 0; background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; transition: opacity 0.6s; }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading h1 { color: #e0e0ff; font-size: 3rem; margin-bottom: 0.5rem; }
+  #loading h2 { color: #b388ff; font-size: 1.4rem; margin-bottom: 2rem; font-weight: 400; }
+  #load-bar-outer { width: 300px; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
+  #load-bar-inner { width: 0%; height: 100%; background: linear-gradient(90deg, #7c4dff, #b388ff); border-radius: 6px; transition: width 0.3s; }
+  #load-text { color: #999; margin-top: 1rem; font-size: 0.9rem; }
+
+  /* HUD */
+  #hud { position: fixed; top: 0; left: 0; right: 0; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; z-index: 10; }
+  .hud-box { background: rgba(20, 10, 30, 0.78); border: 1px solid rgba(179, 136, 255, 0.35); border-radius: 8px; padding: 8px 16px; color: #e0e0ff; font-size: 1rem; backdrop-filter: blur(6px); }
+  #score-display { font-size: 1.3rem; font-weight: bold; }
+  #score-display span { color: #b388ff; }
+  #lives-display { font-size: 1.4rem; letter-spacing: 4px; }
+  #wave-display span { color: #b388ff; }
+  #stamina-outer { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 220px; height: 10px; background: rgba(20, 10, 30, 0.7); border-radius: 5px; border: 1px solid rgba(179, 136, 255, 0.3); z-index: 10; pointer-events: none; }
+  #stamina-inner { height: 100%; width: 100%; background: linear-gradient(90deg, #7c4dff, #00e5ff); border-radius: 5px; transition: width 0.1s; }
+  #stamina-label { position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%); color: rgba(224,224,255,0.5); font-size: 0.7rem; z-index: 10; pointer-events: none; text-transform: uppercase; letter-spacing: 2px; }
+
+  /* Try celebration */
+  #try-overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+  #try-overlay.active { opacity: 1; }
+  #try-overlay h1 { font-size: 6rem; color: #fff; text-shadow: 0 0 40px #b388ff, 0 0 80px #7c4dff; animation: tryPulse 0.5s ease-in-out infinite alternate; }
+  #try-overlay h2 { font-size: 2rem; color: #b388ff; margin-top: 0.5rem; }
+  @keyframes tryPulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+
+  /* Game over */
+  #gameover { position: fixed; inset: 0; background: rgba(10, 5, 20, 0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 60; opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+  #gameover.active { opacity: 1; pointer-events: all; }
+  #gameover h1 { font-size: 3.5rem; color: #e0e0ff; margin-bottom: 0.5rem; }
+  #gameover .final-score { font-size: 2rem; color: #b388ff; margin-bottom: 2rem; }
+  #gameover button { background: linear-gradient(135deg, #7c4dff, #b388ff); color: #fff; border: none; padding: 14px 40px; font-size: 1.2rem; border-radius: 8px; cursor: pointer; transition: transform 0.2s; }
+  #gameover button:hover { transform: scale(1.06); }
+
+  /* Touch controls */
+  #touch-controls { position: fixed; bottom: 20px; left: 0; right: 0; display: none; justify-content: space-between; align-items: flex-end; padding: 0 24px; z-index: 20; pointer-events: none; }
+  #joystick-zone { width: 140px; height: 140px; position: relative; pointer-events: all; }
+  #joystick-base { width: 140px; height: 140px; background: rgba(179, 136, 255, 0.15); border: 2px solid rgba(179, 136, 255, 0.3); border-radius: 50%; position: absolute; }
+  #joystick-knob { width: 50px; height: 50px; background: rgba(179, 136, 255, 0.5); border-radius: 50%; position: absolute; left: 45px; top: 45px; }
+  #sprint-btn { width: 80px; height: 80px; background: rgba(179, 136, 255, 0.2); border: 2px solid rgba(179, 136, 255, 0.4); border-radius: 50%; color: #e0e0ff; font-size: 0.7rem; font-weight: bold; display: flex; align-items: center; justify-content: center; pointer-events: all; text-transform: uppercase; letter-spacing: 1px; }
+  #sprint-btn.active { background: rgba(124, 77, 255, 0.5); }
+
+  /* Particles canvas */
+  #particles { position: fixed; inset: 0; pointer-events: none; z-index: 45; }
+
+  @media (pointer: coarse) {
+    #touch-controls { display: flex; }
+    #stamina-outer { bottom: 180px; }
+    #stamina-label { bottom: 194px; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <h1>青天トライ!</h1>
+  <h2>Blue Sky Try!</h2>
+  <div id="load-bar-outer"><div id="load-bar-inner"></div></div>
+  <div id="load-text">Loading 3D scene...</div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-box" id="score-display">Score: <span>0</span></div>
+  <div class="hud-box" id="wave-display">Wave <span>1</span></div>
+  <div class="hud-box" id="lives-display"></div>
+</div>
+<div id="stamina-label">SPRINT [SPACE]</div>
+<div id="stamina-outer"><div id="stamina-inner"></div></div>
+
+<!-- Try overlay -->
+<div id="try-overlay"><h1>TRY!</h1><h2>+5 points</h2></div>
+
+<!-- Game over -->
+<div id="gameover">
+  <h1>GAME OVER</h1>
+  <div class="final-score">Final Score: <span id="final-score">0</span></div>
+  <button id="restart-btn">Play Again</button>
+</div>
+
+<!-- Particles -->
+<canvas id="particles"></canvas>
+
+<!-- Touch -->
+<div id="touch-controls">
+  <div id="joystick-zone">
+    <div id="joystick-base"></div>
+    <div id="joystick-knob"></div>
+  </div>
+  <div id="sprint-btn">SPRINT</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+/* ================================================================
+   COORDINATE CONVENTION (after GLTF import into Three.js):
+   - Three.js X  = Blender X   (-48 to +48, pitch length)
+   - Three.js Y  = Blender Z   (up)
+   - Three.js Z  = Blender -Y  (lateral, stands at +/-38)
+
+   Player runs from X = -40 toward X = +48 (try line at +44).
+   Lateral movement is Z.
+   ================================================================ */
+
+// ── DOM refs ──
+const particleCanvas = document.getElementById('particles');
+const pCtx = particleCanvas.getContext('2d');
+
+// ── Three.js core ──
+let scene, camera, renderer, clock;
+
+// ── Scene data ──
+let sceneRoot;                     // gltf.scene
+const playerParts  = [];           // BluePlayer_0_* meshes
+const teammates    = [];           // [ { parts: [mesh,...], origPositions: [{x,y,z},...] } ]
+const defenders    = [];           // [ { parts: [mesh,...], origPositions, cx, cz, speed, active } ]
+let ballMesh       = null;
+
+// Each mesh stores its GLTF-loaded position in userData.orig{X,Y,Z}
+
+// ── Game state ──
+let score = 0, lives = 3, wave = 1;
+let stamina = 100;
+let gameState = 'loading';        // loading | playing | tackle | try | gameover
+let stateTimer = 0;
+
+// Player logical position (Three.js coords)
+let px = -40, pz = 0;
+
+// ── Tuning ──
+const BASE_SPEED     = 14;
+const SPRINT_MULT    = 1.75;
+const STAMINA_DRAIN  = 38;       // per sec while sprinting
+const STAMINA_REGEN  = 22;       // per sec while not sprinting
+const TACKLE_DIST    = 1.6;
+const TRY_X          = 44;
+const START_X        = -40;
+const FIELD_Z_HALF   = 16;       // lateral half-extent for player
+
+// ── Input ──
+const keys = {};
+const joy  = { x: 0, y: 0 };
+let touchSprint = false;
+
+// ── Particles ──
+const particles = [];
+
+// ══════════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════════
+function init() {
+  clock = new THREE.Clock();
+
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x4488cc);
+  scene.fog = new THREE.Fog(0x4488cc, 70, 140);
+
+  // Camera – behind player, elevated
+  camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.3;
+  document.body.appendChild(renderer.domElement);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+
+  const sun = new THREE.DirectionalLight(0xfff8e8, 1.5);
+  sun.position.set(20, 50, 15);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const sc = sun.shadow.camera;
+  sc.left = -60; sc.right = 60; sc.top = 50; sc.bottom = -50; sc.far = 140;
+  sun.shadow.bias = -0.0008;
+  scene.add(sun);
+
+  scene.add(new THREE.HemisphereLight(0x88ccff, 0x446622, 0.35));
+
+  // Resize
+  addEventListener('resize', onResize);
+  particleCanvas.width = innerWidth;
+  particleCanvas.height = innerHeight;
+
+  setupInput();
+  loadGLB();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  LOAD GLB
+// ══════════════════════════════════════════════════════════════════
+function loadGLB() {
+  const bar  = document.getElementById('load-bar-inner');
+  const text = document.getElementById('load-text');
+
+  new GLTFLoader().load('scene.glb',
+    (gltf) => {
+      sceneRoot = gltf.scene;
+      scene.add(sceneRoot);
+
+      // Shadows
+      sceneRoot.traverse(c => {
+        if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+      });
+
+      // Snapshot every mesh's loaded position
+      sceneRoot.traverse(c => {
+        if (c.isMesh) {
+          c.userData.ox = c.position.x;
+          c.userData.oy = c.position.y;
+          c.userData.oz = c.position.z;
+        }
+      });
+
+      catalogObjects();
+
+      bar.style.width = '100%';
+      text.textContent = 'Ready!';
+      setTimeout(() => {
+        document.getElementById('loading').classList.add('hidden');
+        beginGame();
+      }, 400);
+    },
+    (prog) => {
+      if (prog.total > 0) {
+        const pct = (prog.loaded / prog.total * 100)|0;
+        bar.style.width = pct + '%';
+        text.textContent = `Loading... ${pct}%`;
+      }
+    },
+    (err) => { text.textContent = 'Load error: ' + err.message; }
+  );
+}
+
+// ── Catalog scene objects ──
+function catalogObjects() {
+  const byPrefix = (prefix) => {
+    const arr = [];
+    sceneRoot.traverse(c => { if (c.isMesh && c.name.startsWith(prefix)) arr.push(c); });
+    return arr;
+  };
+
+  // Player = BluePlayer_0
+  playerParts.push(...byPrefix('BluePlayer_0_'));
+
+  // Teammates = BluePlayer_1..7
+  for (let i = 1; i < 8; i++) {
+    const parts = byPrefix(`BluePlayer_${i}_`);
+    if (parts.length) {
+      teammates.push({
+        parts,
+        origPositions: parts.map(p => ({ x: p.userData.ox, y: p.userData.oy, z: p.userData.oz }))
+      });
+    }
+  }
+
+  // Defenders = RedPlayer_0..7
+  for (let i = 0; i < 8; i++) {
+    const parts = byPrefix(`RedPlayer_${i}_`);
+    if (parts.length) {
+      const body = parts.find(p => p.name.includes('_body'));
+      defenders.push({
+        parts,
+        origPositions: parts.map(p => ({ x: p.userData.ox, y: p.userData.oy, z: p.userData.oz })),
+        cx: body ? body.userData.ox : 0,
+        cz: body ? body.userData.oz : 0,
+        speed: 5,
+        active: false
+      });
+    }
+  }
+
+  // Rugby ball
+  sceneRoot.traverse(c => { if (c.name === 'RugbyBall') ballMesh = c; });
+}
+
+// ── Move a set of meshes by delta from their original positions ──
+function shiftParts(parts, origPositions, dx, dy, dz) {
+  for (let i = 0; i < parts.length; i++) {
+    parts[i].position.x = origPositions[i].x + dx;
+    parts[i].position.y = origPositions[i].y + dy;
+    parts[i].position.z = origPositions[i].z + dz;
+  }
+}
+
+function setPartsVisible(parts, vis) {
+  parts.forEach(p => p.visible = vis);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GAME FLOW
+// ══════════════════════════════════════════════════════════════════
+function beginGame() {
+  score = 0; lives = 3; wave = 1; stamina = 100;
+  gameState = 'playing';
+  resetRound();
+  updateHUD();
+}
+
+function resetRound() {
+  px = START_X; pz = 0;
+  positionPlayer();
+  layoutDefenders();
+  layoutTeammates();
+}
+
+// ── Position player meshes to match (px, pz) ──
+function positionPlayer() {
+  // BluePlayer_0_body original position gives us the reference
+  const body = playerParts.find(p => p.name.includes('_body'));
+  if (!body) return;
+  const refX = body.userData.ox;
+  const refZ = body.userData.oz;
+  const dx = px - refX;
+  const dz = pz - refZ;
+
+  playerParts.forEach(p => {
+    p.position.x = p.userData.ox + dx;
+    p.position.z = p.userData.oz + dz;
+    // Y stays at original (keeps head/body/legs at correct heights)
+  });
+
+  // Attach ball to player
+  if (ballMesh) {
+    ballMesh.position.set(px + 0.4, 1.15, pz);
+  }
+}
+
+// ── Spread defenders across the field ──
+function layoutDefenders() {
+  const count = Math.min(8, 3 + wave);
+  const speedBase = 5 + wave * 1.0;
+
+  defenders.forEach((d, i) => {
+    d.active = i < count;
+    d.speed = speedBase + Math.random() * 2.5;
+
+    if (d.active) {
+      // Distribute between x = -15 and x = 42
+      const span = 57; // from -15 to 42
+      const step = span / count;
+      d.cx = -15 + step * (i + 0.5);
+      d.cz = (Math.random() - 0.5) * FIELD_Z_HALF * 2;
+    }
+
+    positionDefender(d);
+    setPartsVisible(d.parts, d.active);
+  });
+}
+
+function positionDefender(d) {
+  const body = d.parts.find(p => p.name.includes('_body'));
+  if (!body) return;
+  const dx = d.cx - body.userData.ox;
+  const dz = d.cz - body.userData.oz;
+  d.parts.forEach(p => {
+    p.position.x = p.userData.ox + dx;
+    p.position.z = p.userData.oz + dz;
+  });
+}
+
+// ── Blue teammates follow loosely behind player ──
+function layoutTeammates() {
+  teammates.forEach((tm, i) => {
+    // Position them behind and spread laterally
+    const tmx = px - 3 - i * 3.5;
+    const tmz = (i % 2 === 0 ? 1 : -1) * (2 + i * 1.5);
+    tm.cx = tmx; tm.cz = tmz;
+    const body = tm.parts.find(p => p.name.includes('_body'));
+    if (!body) return;
+    const dx = tmx - body.userData.ox;
+    const dz = tmz - body.userData.oz;
+    shiftParts(tm.parts, tm.origPositions, dx, 0, dz);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  INPUT
+// ══════════════════════════════════════════════════════════════════
+function setupInput() {
+  addEventListener('keydown', e => { keys[e.code] = true; if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
+  addEventListener('keyup',   e => { keys[e.code] = false; });
+
+  // Virtual joystick
+  const jZone = document.getElementById('joystick-zone');
+  const jKnob = document.getElementById('joystick-knob');
+  const sBn   = document.getElementById('sprint-btn');
+  let jId = null;
+
+  jZone.addEventListener('touchstart', e => { e.preventDefault(); jId = e.changedTouches[0].identifier; });
+  jZone.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== jId) continue;
+      const r = jZone.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let dx = t.clientX - cx, dy = t.clientY - cy;
+      const d = Math.hypot(dx, dy), mx = 50;
+      if (d > mx) { dx *= mx / d; dy *= mx / d; }
+      jKnob.style.left = (45 + dx) + 'px';
+      jKnob.style.top  = (45 + dy) + 'px';
+      joy.x = -dy / mx;   // up on screen = forward = +X
+      joy.y =  dx / mx;   // right on screen = +Z
+    }
+  });
+  jZone.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== jId) continue;
+      jId = null;
+      jKnob.style.left = '45px'; jKnob.style.top = '45px';
+      joy.x = 0; joy.y = 0;
+    }
+  });
+
+  sBn.addEventListener('touchstart', e => { e.preventDefault(); touchSprint = true;  sBn.classList.add('active'); });
+  sBn.addEventListener('touchend',   () => { touchSprint = false; sBn.classList.remove('active'); });
+  sBn.addEventListener('touchcancel',() => { touchSprint = false; sBn.classList.remove('active'); });
+
+  document.getElementById('restart-btn').addEventListener('click', () => {
+    document.getElementById('gameover').classList.remove('active');
+    beginGame();
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HUD
+// ══════════════════════════════════════════════════════════════════
+function updateHUD() {
+  document.querySelector('#score-display span').textContent = score;
+  document.querySelector('#wave-display span').textContent = wave;
+  let h = '';
+  for (let i = 0; i < 3; i++) h += i < lives ? '❤' : '♡';
+  document.getElementById('lives-display').textContent = h;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PARTICLES
+// ══════════════════════════════════════════════════════════════════
+function spawnTryParticles() {
+  for (let i = 0; i < 100; i++) {
+    particles.push({
+      x: innerWidth / 2 + (Math.random() - 0.5) * 300,
+      y: innerHeight / 2 + (Math.random() - 0.5) * 200,
+      vx: (Math.random() - 0.5) * 14,
+      vy: -3 - Math.random() * 8,
+      r: 3 + Math.random() * 7,
+      color: ['#b388ff','#7c4dff','#00e5ff','#ffab40'][Math.random() * 4 | 0],
+      life: 1, decay: 0.006 + Math.random() * 0.014
+    });
+  }
+}
+function tickParticles() {
+  pCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.life -= p.decay;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    pCtx.globalAlpha = p.life;
+    pCtx.fillStyle = p.color;
+    pCtx.beginPath(); pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); pCtx.fill();
+  }
+  pCtx.globalAlpha = 1;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GAME LOOP
+// ══════════════════════════════════════════════════════════════════
+function tick(dt) {
+  if (!sceneRoot) return;
+
+  switch (gameState) {
+    case 'playing': tickPlaying(dt); break;
+    case 'tackle':
+      stateTimer -= dt;
+      if (stateTimer <= 0) {
+        if (lives <= 0) {
+          gameState = 'gameover';
+          document.getElementById('final-score').textContent = score;
+          document.getElementById('gameover').classList.add('active');
+        } else {
+          gameState = 'playing';
+          resetRound();
+        }
+      }
+      break;
+    case 'try':
+      stateTimer -= dt;
+      if (stateTimer <= 0) {
+        document.getElementById('try-overlay').classList.remove('active');
+        wave++;
+        gameState = 'playing';
+        resetRound();
+        updateHUD();
+      }
+      break;
+  }
+
+  tickCamera(dt);
+  tickParticles();
+}
+
+// ── Playing tick ──
+function tickPlaying(dt) {
+  // Input
+  let mx = 0, mz = 0;
+  if (keys['KeyW'] || keys['ArrowUp'])    mx += 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  mx -= 0.5;
+  if (keys['KeyA'] || keys['ArrowLeft'])  mz -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) mz += 1;
+  mx += joy.x;
+  mz += joy.y;
+  const mag = Math.hypot(mx, mz);
+  if (mag > 1) { mx /= mag; mz /= mag; }
+
+  // Sprint
+  const wantSprint = (keys['Space'] || touchSprint) && stamina > 0 && mag > 0.1;
+  if (wantSprint) {
+    stamina = Math.max(0, stamina - STAMINA_DRAIN * dt);
+  } else {
+    stamina = Math.min(100, stamina + STAMINA_REGEN * dt);
+  }
+  document.getElementById('stamina-inner').style.width = stamina + '%';
+
+  const spd = BASE_SPEED * (wantSprint ? SPRINT_MULT : 1);
+  px += mx * spd * dt;
+  pz += mz * spd * dt;
+  px = Math.max(-48, Math.min(48, px));
+  pz = Math.max(-FIELD_Z_HALF, Math.min(FIELD_Z_HALF, pz));
+
+  // Position player + bob
+  positionPlayer();
+  if (mag > 0.1) {
+    const bob = Math.sin(performance.now() * 0.01) * 0.08;
+    const head = playerParts.find(p => p.name.includes('_head'));
+    if (head) head.position.y += bob;
+  }
+
+  // Teammates follow
+  teammates.forEach((tm, i) => {
+    const tx = px - 4 - i * 3;
+    const tz = pz + (i % 2 === 0 ? 1 : -1) * (3 + i);
+    tm.cx += (tx - tm.cx) * 2 * dt;
+    tm.cz += (tz - tm.cz) * 2 * dt;
+    const body = tm.parts.find(p => p.name.includes('_body'));
+    if (!body) return;
+    const ddx = tm.cx - body.userData.ox;
+    const ddz = tm.cz - body.userData.oz;
+    shiftParts(tm.parts, tm.origPositions, ddx, 0, ddz);
+  });
+
+  // Defenders AI
+  tickDefenders(dt);
+
+  // Collision
+  for (const d of defenders) {
+    if (!d.active) continue;
+    if (Math.hypot(px - d.cx, pz - d.cz) < TACKLE_DIST) {
+      doTackle(); return;
+    }
+  }
+
+  // Try!
+  if (px >= TRY_X) doTry();
+}
+
+// ── Defender AI ──
+function tickDefenders(dt) {
+  defenders.forEach((d, i) => {
+    if (!d.active) return;
+
+    // Predict where the player is heading
+    const predict = 0.2 + wave * 0.06;
+    let pmx = 0;
+    if (keys['KeyW'] || keys['ArrowUp'] || joy.x > 0.1) pmx = 1;
+    let pmz = 0;
+    if (keys['KeyD'] || keys['ArrowRight'] || joy.y > 0.1) pmz = 1;
+    if (keys['KeyA'] || keys['ArrowLeft'] || joy.y < -0.1) pmz = -1;
+
+    const tgtX = px + pmx * predict * BASE_SPEED;
+    const tgtZ = pz + pmz * predict * BASE_SPEED;
+
+    const ddx = tgtX - d.cx;
+    const ddz = tgtZ - d.cz;
+    const dd  = Math.hypot(ddx, ddz);
+    if (dd > 0.3) {
+      const s = d.speed * dt;
+      d.cx += (ddx / dd) * s;
+      d.cz += (ddz / dd) * s;
+    }
+    d.cx = Math.max(-48, Math.min(48, d.cx));
+    d.cz = Math.max(-20, Math.min(20, d.cz));
+
+    positionDefender(d);
+
+    // Bob
+    const bob = Math.sin(performance.now() * 0.009 + i * 2) * 0.06;
+    const head = d.parts.find(p => p.name.includes('_head'));
+    if (head) head.position.y += bob;
+  });
+}
+
+// ── Tackle ──
+function doTackle() {
+  lives--;
+  updateHUD();
+  gameState = 'tackle';
+  stateTimer = 1.4;
+
+  // Red flash on player
+  const saved = [];
+  playerParts.forEach(m => {
+    if (m.material && m.material.color) {
+      saved.push({ m, c: m.material.color.clone() });
+      m.material = m.material.clone();
+      m.material.color.set(0xff2222);
+    }
+  });
+  setTimeout(() => { saved.forEach(({ m, c }) => { m.material.color.copy(c); }); }, 400);
+}
+
+// ── Try ──
+function doTry() {
+  score += 5;
+  gameState = 'try';
+  stateTimer = 2.5;
+  updateHUD();
+  document.getElementById('try-overlay').classList.add('active');
+  spawnTryParticles();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CAMERA
+// ══════════════════════════════════════════════════════════════════
+function tickCamera(dt) {
+  const lerp = 1 - Math.exp(-4 * dt);
+  const tx = px - 10;
+  const ty = 6;
+  const tz = pz * 0.3;
+
+  camera.position.x += (tx - camera.position.x) * lerp;
+  camera.position.y += (ty - camera.position.y) * lerp;
+  camera.position.z += (tz - camera.position.z) * lerp;
+
+  camera.lookAt(px + 8, 1.2, pz * 0.5);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RESIZE
+// ══════════════════════════════════════════════════════════════════
+function onResize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  particleCanvas.width = innerWidth;
+  particleCanvas.height = innerHeight;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  tick(dt);
+  renderer.render(scene, camera);
+}
+
+init();
+animate();
+</script>
+</body>
+</html>
