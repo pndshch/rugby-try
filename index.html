@@ -192,12 +192,12 @@ function init() {
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x4488cc);
-  scene.fog = new THREE.Fog(0x4488cc, 90, 180);
+  scene.fog = new THREE.Fog(0x4488cc, 100, 250);
 
   // Camera – behind player, elevated (FOV adjusted for aspect ratio)
   const aspect = innerWidth / innerHeight;
-  const fov = aspect < 0.7 ? 80 : aspect < 1.0 ? 68 : 55;
-  camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 200);
+  const fov = aspect < 0.6 ? 90 : aspect < 0.8 ? 78 : aspect < 1.1 ? 65 : 55;
+  camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 300);
 
   // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -224,7 +224,7 @@ function init() {
   scene.add(new THREE.HemisphereLight(0x88ccff, 0x446622, 0.35));
 
   // Extended ground plane — ensures green field never appears cut off
-  const groundGeo = new THREE.PlaneGeometry(250, 160);
+  const groundGeo = new THREE.PlaneGeometry(600, 600);
   const groundMat = new THREE.MeshStandardMaterial({
     color: 0x2d8c2d,
     roughness: 0.9,
@@ -693,17 +693,27 @@ function doTry() {
 function tickCamera(dt) {
   const lerp = 1 - Math.exp(-4 * dt);
   const aspect = innerWidth / innerHeight;
-  // Portrait: pull camera higher and further back to see more field
-  const isPortrait = aspect < 0.8;
-  const tx = px - (isPortrait ? 14 : 10);
-  const ty = isPortrait ? 10 : 6;
-  const tz = pz * (isPortrait ? 0.2 : 0.3);
+  // Portrait: pull camera much higher and further back
+  let tx, ty, tz, lx, ly, lz;
+  if (aspect < 0.6) {
+    // Very narrow portrait (phone)
+    tx = px - 18; ty = 14; tz = pz * 0.15;
+    lx = px + 5; ly = 0.8; lz = pz * 0.2;
+  } else if (aspect < 0.9) {
+    // Moderate portrait
+    tx = px - 14; ty = 10; tz = pz * 0.2;
+    lx = px + 6; ly = 1.0; lz = pz * 0.3;
+  } else {
+    // Landscape / desktop
+    tx = px - 10; ty = 6; tz = pz * 0.3;
+    lx = px + 8; ly = 1.2; lz = pz * 0.5;
+  }
 
   camera.position.x += (tx - camera.position.x) * lerp;
   camera.position.y += (ty - camera.position.y) * lerp;
   camera.position.z += (tz - camera.position.z) * lerp;
 
-  camera.lookAt(px + (isPortrait ? 6 : 8), 1.2, pz * (isPortrait ? 0.3 : 0.5));
+  camera.lookAt(lx, ly, lz);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -713,7 +723,7 @@ function onResize() {
   const aspect = innerWidth / innerHeight;
   camera.aspect = aspect;
   // Wider FOV on portrait to see the whole field
-  camera.fov = aspect < 0.7 ? 80 : aspect < 1.0 ? 68 : 55;
+  camera.fov = aspect < 0.6 ? 90 : aspect < 0.8 ? 78 : aspect < 1.1 ? 65 : 55;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   particleCanvas.width = innerWidth;
