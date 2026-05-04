@@ -60,6 +60,21 @@
     #stamina-outer { bottom: 180px; }
     #stamina-label { bottom: 194px; }
   }
+  @media (max-width: 600px) {
+    .hud-box { padding: 5px 10px; font-size: 0.8rem; border-radius: 6px; }
+    #score-display { font-size: 1rem; }
+    #lives-display { font-size: 1.1rem; letter-spacing: 2px; }
+    #hud { padding: 8px 10px; }
+    #loading h1 { font-size: 2rem; }
+    #loading h2 { font-size: 1rem; }
+    #try-overlay h1 { font-size: 4rem; }
+    #try-overlay h2 { font-size: 1.4rem; }
+    #gameover h1 { font-size: 2.5rem; }
+    #gameover .final-score { font-size: 1.4rem; }
+    #joystick-zone, #joystick-base { width: 120px; height: 120px; }
+    #joystick-knob { width: 44px; height: 44px; left: 38px; top: 38px; }
+    #sprint-btn { width: 70px; height: 70px; font-size: 0.6rem; }
+  }
 </style>
 <script type="importmap">
 {
@@ -177,10 +192,12 @@ function init() {
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x4488cc);
-  scene.fog = new THREE.Fog(0x4488cc, 70, 140);
+  scene.fog = new THREE.Fog(0x4488cc, 90, 180);
 
-  // Camera – behind player, elevated
-  camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+  // Camera – behind player, elevated (FOV adjusted for aspect ratio)
+  const aspect = innerWidth / innerHeight;
+  const fov = aspect < 0.7 ? 80 : aspect < 1.0 ? 68 : 55;
+  camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 200);
 
   // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -205,6 +222,19 @@ function init() {
   scene.add(sun);
 
   scene.add(new THREE.HemisphereLight(0x88ccff, 0x446622, 0.35));
+
+  // Extended ground plane — ensures green field never appears cut off
+  const groundGeo = new THREE.PlaneGeometry(250, 160);
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x2d8c2d,
+    roughness: 0.9,
+    metalness: 0.0,
+  });
+  const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+  groundPlane.rotation.x = -Math.PI / 2;
+  groundPlane.position.y = -0.05; // slightly below the Blender field
+  groundPlane.receiveShadow = true;
+  scene.add(groundPlane);
 
   // Resize
   addEventListener('resize', onResize);
@@ -662,22 +692,28 @@ function doTry() {
 // ══════════════════════════════════════════════════════════════════
 function tickCamera(dt) {
   const lerp = 1 - Math.exp(-4 * dt);
-  const tx = px - 10;
-  const ty = 6;
-  const tz = pz * 0.3;
+  const aspect = innerWidth / innerHeight;
+  // Portrait: pull camera higher and further back to see more field
+  const isPortrait = aspect < 0.8;
+  const tx = px - (isPortrait ? 14 : 10);
+  const ty = isPortrait ? 10 : 6;
+  const tz = pz * (isPortrait ? 0.2 : 0.3);
 
   camera.position.x += (tx - camera.position.x) * lerp;
   camera.position.y += (ty - camera.position.y) * lerp;
   camera.position.z += (tz - camera.position.z) * lerp;
 
-  camera.lookAt(px + 8, 1.2, pz * 0.5);
+  camera.lookAt(px + (isPortrait ? 6 : 8), 1.2, pz * (isPortrait ? 0.3 : 0.5));
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  RESIZE
 // ══════════════════════════════════════════════════════════════════
 function onResize() {
-  camera.aspect = innerWidth / innerHeight;
+  const aspect = innerWidth / innerHeight;
+  camera.aspect = aspect;
+  // Wider FOV on portrait to see the whole field
+  camera.fov = aspect < 0.7 ? 80 : aspect < 1.0 ? 68 : 55;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   particleCanvas.width = innerWidth;
